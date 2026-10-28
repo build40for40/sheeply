@@ -1,6 +1,6 @@
 {
   "name": "sheeply",
-  "version": "0.1.0",
+  "version": "0.1.1",
   "description": "Local-first CLI that profiles how a venture firm invests: entry stage, lead behaviour and syndicate concentration, from Dealroom data",
   "keywords": [
     "venture-capital",
