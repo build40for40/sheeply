@@ -1,6 +1,14 @@
 # Sheeply
 
+[![npm](https://img.shields.io/npm/v/sheeply?logo=npm&label=npm)](https://www.npmjs.com/package/sheeply)
+[![Node](https://img.shields.io/node/v/sheeply)](https://nodejs.org)
+[![Licence: MIT](https://img.shields.io/npm/l/sheeply)](LICENSE)
+
 Is your VC a black sheep or one of the flock?
+
+```bash
+npx sheeply "Seedcamp"
+```
 
 Every investor says they back founders early and lead with conviction. Sheeply checks. Give it a firm's name and it pulls the firm's portfolio and every funding round from [Dealroom](https://dealroom.co), works out how often the firm leads or goes in first rather than following someone else, and draws you a sheep.
 
@@ -44,22 +52,22 @@ Each answer becomes a rank against a peer set of 31 UK and European early-stage 
 
 ## Getting started
 
-You need Node.js 22.13 or later and a Dealroom API key.
+You need Node.js 22.13 or later and a Dealroom API key (see below). Then run it straight from npm, nothing to install:
 
 ```bash
-git clone https://github.com/build40for40/sheeply.git
-cd sheeply
-npm install
-npm run build
-cp .env.example .env    # then add your Dealroom key, see below
-node dist/cli/index.js "Seedcamp"
+npx sheeply "Seedcamp"
 ```
 
-Once it's published to npm, this becomes `npx sheeply "Seedcamp"`.
+Or install it once and drop the `npx`:
+
+```bash
+npm install -g sheeply
+sheeply "Seedcamp"
+```
 
 ### Your Dealroom key
 
-A Dealroom API key is a client id and a secret, created under API settings in Dealroom. Put both in `.env` in the folder you run Sheeply from:
+A Dealroom API key is a client id and a secret, created under API settings in Dealroom. Put both in a `.env` file in the folder you run Sheeply from, or export them in your shell:
 
 ```bash
 DEALROOM_CLIENT_ID=your-client-id
@@ -143,6 +151,9 @@ tests/        fictional Dealroom data, an in-memory fake API, CLI tests and an o
 ## Development
 
 ```bash
+git clone https://github.com/build40for40/sheeply.git
+cd sheeply
+npm install
 npm run dev -- "Seedcamp"   # run from source
 npm test                    # all tests, no Dealroom key needed
 npm run typecheck
