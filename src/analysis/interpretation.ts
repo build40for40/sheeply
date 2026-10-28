@@ -1,17 +1,15 @@
 import type { DataQuality } from "./data-quality.ts";
 import type { EntryMaturity } from "./entry-maturity.ts";
-import type { Leadership } from "./leadership.ts";
-import type { Syndicates } from "./syndicates.ts";
+import type { InvestmentLeadership } from "./leadership.ts";
 
 /**
  * Fixed thresholds behind every statement. They describe this investor's own observed data; none
- * is a market benchmark, so statements say "most" or "a minority", never "high" or "low".
+ * is a market benchmark, so statements say "most" or "a minority", never "high" or "low". Only the
+ * two metrics are interpreted; sector exposure and syndicate relationships stay descriptive.
  */
 export const THRESHOLDS = {
   minimumSample: 10,
   majorityShare: 0.5,
-  concentratedTopLead: 0.25,
-  diversifiedTopLead: 0.1,
   lowCoverage: 0.7,
 } as const;
 
@@ -23,109 +21,91 @@ export interface Statement {
 
 const pct = (share: number | null): string => (share === null ? "n/a" : `${Math.round(share * 100)}%`);
 
-export function interpret(entry: EntryMaturity, lead: Leadership, synd: Syndicates, quality: DataQuality): Statement[] {
+export function interpret(entry: EntryMaturity, leadership: InvestmentLeadership, quality: DataQuality): Statement[] {
   const out: Statement[] = [];
   const t = THRESHOLDS;
+  const d = entry.distribution;
 
-  const early = entry.distribution.pre_seed.count + entry.distribution.seed.count;
-  const earlyShare = entry.known_stage === 0 ? null : early / entry.known_stage;
+  const early = d.pre_seed.count + d.seed.count;
+  const later = d.series_a.count + d.series_b_plus.count;
   if (entry.known_stage < t.minimumSample) {
     out.push({
-      rule: "entry_stage.insufficient_sample",
+      rule: "entry_maturity.insufficient_sample",
       statement: `Too few first investments with a known stage (${entry.known_stage}) to describe entry maturity.`,
       evidence: { known_stage: entry.known_stage, minimum_sample: t.minimumSample },
     });
-  } else if (earlyShare !== null && earlyShare >= t.majorityShare) {
-    out.push({
-      rule: "entry_stage.majority_pre_seed_or_seed",
-      statement: `Most first investments with a known stage (${pct(earlyShare)} of ${entry.known_stage}) were at pre-seed or seed.`,
-      evidence: { pre_seed_or_seed: early, known_stage: entry.known_stage, threshold: t.majorityShare },
-    });
   } else {
+    const earlyShare = early / entry.known_stage;
+    const majority = earlyShare >= t.majorityShare;
     out.push({
-      rule: "entry_stage.majority_series_a_or_later",
-      statement: `Most first investments with a known stage (${pct(earlyShare === null ? null : 1 - earlyShare)} of ${entry.known_stage}) were at Series A or later.`,
-      evidence: { series_a_or_later: entry.known_stage - early, known_stage: entry.known_stage, threshold: t.majorityShare },
-    });
-  }
-
-  const initial = lead.initial_rounds;
-  if (initial.known < t.minimumSample) {
-    out.push({
-      rule: "leadership.insufficient_sample",
-      statement: `Too few initial rounds with a known lead status (${initial.known}) to describe lead behaviour.`,
-      evidence: { known: initial.known, minimum_sample: t.minimumSample },
-    });
-  } else if ((initial.led_share_of_known ?? 0) >= t.majorityShare) {
-    out.push({
-      rule: "leadership.led_majority",
-      statement: `Led or co-led most initial rounds with a known lead status (${pct(initial.led_share_of_known)} of ${initial.known}).`,
-      evidence: { led: initial.led, known: initial.known, threshold: t.majorityShare },
-    });
-  } else {
-    out.push({
-      rule: "leadership.led_minority",
-      statement: `Led or co-led a minority of initial rounds with a known lead status (${pct(initial.led_share_of_known)} of ${initial.known}).`,
-      evidence: { led: initial.led, known: initial.known, threshold: t.majorityShare },
-    });
-    out.push({
-      rule: "leadership.caveat",
-      statement: "A minority lead rate alone does not establish follower behaviour: it is also consistent with deliberate co-investing or incomplete lead data.",
-      evidence: {},
-    });
-  }
-
-  const asReported = initial.led_share_if_unflagged_means_not_led;
-  if (initial.no_lead_recorded > 0 && initial.led_share_of_known !== null && asReported !== null) {
-    out.push({
-      rule: "leadership.sensitivity",
-      statement: `${initial.no_lead_recorded} initial rounds have no lead flagged for anyone. Counting those as non-leads would put the lead rate at ${pct(asReported)} instead of ${pct(initial.led_share_of_known)}.`,
-      evidence: { no_lead_recorded: initial.no_lead_recorded, led_share_of_known: initial.led_share_of_known, led_share_if_unflagged_means_not_led: asReported },
-    });
-  }
-
-  const partners = synd.lead_partners;
-  const dependence = partners.top_lead_dependence;
-  if (partners.rounds < t.minimumSample) {
-    out.push({
-      rule: "syndicates.insufficient_sample",
-      statement: `Too few initial rounds led by another investor (${partners.rounds}) to describe lead-partner concentration.`,
-      evidence: { rounds: partners.rounds, minimum_sample: t.minimumSample },
-    });
-  } else if (dependence !== null && dependence >= t.concentratedTopLead) {
-    out.push({
-      rule: "syndicates.concentrated",
-      statement: `Entries led by others are concentrated: ${partners.top_lead!.name} led ${pct(dependence)} of ${partners.rounds}.`,
-      evidence: { top_lead_dependence: dependence, threshold: t.concentratedTopLead },
-    });
-  } else if (dependence !== null && dependence <= t.diversifiedTopLead) {
-    out.push({
-      rule: "syndicates.diversified",
-      statement: `Entries led by others are spread across ${partners.unique_lead_partners} lead partners; the most frequent led ${pct(dependence)} of ${partners.rounds}.`,
-      evidence: { top_lead_dependence: dependence, unique_lead_partners: partners.unique_lead_partners, threshold: t.diversifiedTopLead },
-    });
-  } else {
-    out.push({
-      rule: "syndicates.moderate",
-      statement: `The most frequent lead partner (${partners.top_lead?.name ?? "n/a"}) led ${pct(dependence)} of ${partners.rounds} entries led by others, across ${partners.unique_lead_partners} lead partners.`,
+      rule: majority ? "entry_maturity.majority_pre_seed_or_seed" : "entry_maturity.majority_series_a_or_later",
+      statement:
+        `${majority ? "Most" : "A minority of"} first investments with a known stage were at pre-seed or seed ` +
+        `(${early} of ${entry.known_stage}, ${pct(earlyShare)}). A further ${d.unknown.count} of ${entry.first_investments} ` +
+        `first investments (${pct(d.unknown.share)}) have no Dealroom stage.`,
       evidence: {
-        top_lead_dependence: dependence,
-        diversified_threshold: t.diversifiedTopLead,
-        concentrated_threshold: t.concentratedTopLead,
+        pre_seed_or_seed: early,
+        series_a_or_later: later,
+        known_stage: entry.known_stage,
+        unknown_stage: d.unknown.count,
+        threshold: t.majorityShare,
+      },
+    });
+    const atFirst = entry.explanatory_attributes.entry_position.entered_at_company_first_known_vc_round;
+    out.push({
+      rule: "entry_maturity.entry_position",
+      statement: `The first observed investment was the company's earliest known VC round in ${atFirst.numerator} of ${atFirst.denominator} companies (${pct(atFirst.value)}).`,
+      evidence: { numerator: atFirst.numerator, denominator: atFirst.denominator },
+    });
+  }
+
+  const initial = leadership.initial_investments;
+  const leadRate = initial.lead_rate;
+  if (initial.usable_lead_status < t.minimumSample) {
+    out.push({
+      rule: "investment_leadership.insufficient_sample",
+      statement: `Too few first investments with a usable lead status (${initial.usable_lead_status}) to describe lead behaviour.`,
+      evidence: { usable_lead_status: initial.usable_lead_status, minimum_sample: t.minimumSample },
+    });
+  } else {
+    const majority = (leadRate.value ?? 0) >= t.majorityShare;
+    out.push({
+      rule: majority ? "investment_leadership.led_majority" : "investment_leadership.led_minority",
+      statement: `Recorded as lead or co-lead on ${majority ? "most" : "a minority"} of first investments with a usable lead status (${leadRate.numerator} of ${leadRate.denominator}, ${pct(leadRate.value)}).`,
+      evidence: { numerator: leadRate.numerator, denominator: leadRate.denominator, threshold: t.majorityShare },
+    });
+    if (!majority) {
+      out.push({
+        rule: "investment_leadership.caveat",
+        statement:
+          "A minority lead rate alone does not establish follower behaviour: it is also consistent with deliberate co-investing, and the lead flag shows observed participation, not who originated the round.",
+        evidence: {},
+      });
+    }
+  }
+  const asReported = initial.sensitivity.lead_rate_if_every_false_is_non_lead;
+  if (initial.false_with_no_lead_on_round > 0 && leadRate.value !== null) {
+    out.push({
+      rule: "investment_leadership.sensitivity",
+      statement: `${initial.false_with_no_lead_on_round} first investments are on rounds where nobody is flagged as lead. Reading every false flag as a confirmed non-lead would give ${pct(asReported.value)} instead of ${pct(leadRate.value)}.`,
+      evidence: {
+        false_with_no_lead_on_round: initial.false_with_no_lead_on_round,
+        lead_rate: leadRate.value,
+        lead_rate_if_every_false_is_non_lead: asReported.value,
       },
     });
   }
 
   for (const [key, label] of [
-    ["entry_stage", "entry-stage"],
-    ["lead_status", "lead-status"],
+    ["entry_stage", "entry stage"],
+    ["lead_status", "lead status"],
   ] as const) {
     const coverage = quality.coverage[key];
-    if (coverage !== null && coverage < t.lowCoverage) {
+    if (coverage.value !== null && coverage.value < t.lowCoverage) {
       out.push({
         rule: `data_quality.${key}_coverage`,
-        statement: `Only ${pct(coverage)} of identified first investments have a known ${label.replace("-", " ")}, so the ${label} figures describe a subset that may not be representative.`,
-        evidence: { coverage, threshold: t.lowCoverage },
+        statement: `Only ${coverage.numerator} of ${coverage.denominator} first investments (${pct(coverage.value)}) have a usable ${label}, so that figure describes a subset that may not be representative.`,
+        evidence: { numerator: coverage.numerator, denominator: coverage.denominator, threshold: t.lowCoverage },
       });
     }
   }

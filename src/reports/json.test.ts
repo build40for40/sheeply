@@ -1,11 +1,15 @@
 import { describe, expect, it } from "vitest";
 import { fixtureDataset } from "../../tests/fixtures/dataset.ts";
 import { analyse } from "../analysis/analyse.ts";
+import { blackSheepScore, calibrate, sheepProfile } from "../analysis/black-sheep.ts";
 import { buildReport, datasetFingerprint, renderJson } from "./json.ts";
 
 const render = (verbose = false) => {
   const dataset = fixtureDataset();
-  return renderJson(buildReport(dataset, analyse(dataset), { verbose }));
+  const analysis = analyse(dataset);
+  const profile = sheepProfile(analysis.history, analysis.entryMaturity, dataset.investor.name);
+  const blackSheep = blackSheepScore(profile, calibrate([], "test", "test"));
+  return renderJson(buildReport(dataset, analysis, blackSheep, { verbose }));
 };
 
 describe("JSON report", () => {
@@ -28,6 +32,16 @@ describe("JSON report", () => {
       initial_round: { round_id: 21, stage_bucket: "seed", lead_status: "not_led", leads: [{ name: "Northwind Capital" }] },
       follow_on_rounds: [{ round_id: 22 }],
     });
+  });
+
+  it("keeps the metrics and descriptive outputs separate from the peer-ranked score", () => {
+    const report = JSON.parse(render());
+    expect(report.entry_maturity.role).toBe("metric");
+    expect(report.investment_leadership.role).toBe("metric");
+    expect(report.sector_exposure.role).toBe("descriptive");
+    expect(report.syndicate_relationships.role).toBe("descriptive");
+    expect(report.black_sheep_score).toMatchObject({ role: "score", status: "not_scored", value: null });
+    expect(Object.keys(report).filter((key) => key.includes("score"))).toEqual(["black_sheep_score"]);
   });
 
   it("carries versions and sample sizes", () => {

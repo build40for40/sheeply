@@ -20,5 +20,6 @@ Local-first CLI that profiles how a venture firm invests (entry stage, lead beha
 ## Development
 
 - `npm test` runs unit tests (colocated `*.test.ts`) and `tests/integration/` against an in-memory fake Dealroom.
+- `npm run calibrate -- --db <cache>` fetches any missing peer in `scripts/peers.ts` and regenerates `src/analysis/black-sheep-calibration.ts`. Rerun it whenever the black sheep observations or eligibility rules change. It costs about 30,000 credits from an empty cache.
 - `npm run test:smoke` hits the live API for a dozen credits; it skips without credentials.
 - Verify packaging with `npm pack` and `npx --package ./sheeply-<version>.tgz sheeply --version`. Never publish to npm without explicit approval.

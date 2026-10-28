@@ -45,4 +45,28 @@ describe("buildInvestmentHistory", () => {
     expect(acme.initial?.id).toBe(2);
     expect(acme.flags).toEqual(["undated_participation"]);
   });
+
+  it("does not read a missing investor list as an empty one", () => {
+    const rounds = [
+      toRound(round(1, COMPANIES.acme, { date: "2018-01", label: "SEED", standardized: "Seed", investors: null })),
+      toRound(round(2, COMPANIES.acme, { date: "2019-01", label: "SERIES A", standardized: "Series A", investors: [participant(INVESTOR, false)] })),
+      toRound(round(3, COMPANIES.gamma, { date: "2020-01", label: "SEED", standardized: "Seed", investors: null })),
+    ];
+    const history = buildInvestmentHistory(fixtureDataset({ rounds }));
+    expect(byName(history, "Acme Robotics").flags).toContain("earlier_round_investors_undisclosed");
+    expect(byName(history, "Gamma AI").status).toBe("participation_undisclosed");
+  });
+
+  it("records the company's own funding before the investor's entry", () => {
+    const bramble = byName(history, "Bramble Health");
+    expect(bramble.initial?.id).toBe(21);
+    expect(bramble.entry).toEqual({
+      companyFirstVcRoundId: 20,
+      priorVcRounds: 1,
+      uncertainVcRounds: 0,
+      priorVcCapital: 500_000,
+      priorVcRoundsWithoutAmount: 0,
+      companyAgeAtEntryYears: 3,
+    });
+  });
 });

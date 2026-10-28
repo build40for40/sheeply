@@ -53,7 +53,8 @@ Not used: `stages` (empty for the firms checked), `deal_size` (`{min: 0, max: 0}
 | `is_lead` | `is_lead_any` | Stored only. It means "led at least one round", too coarse for per-round analysis |
 | `last_round_date` | `last_round_date` | Stored only |
 | `company.name`, `launch_date`, `dealroom_url` | `companies.*` | Report |
-| `company.taxonomy[]` (`id`, `name`, `type`) | `taxonomy_terms`, `company_taxonomy` | Sector distribution (`type = industry` only) |
+| `company.taxonomy[]` (`id`, `name`, `type`) | `taxonomy_terms`, `company_taxonomy` | Sector exposure (`type = industry` only; no exclusive sector field exists) |
+| `company.launch_date` | `companies.launch_date` | Company age at entry (year precision) |
 
 ## Funding rounds (`/data/transactions` → `funding_rounds`, `round_participants`, `entities`)
 
@@ -65,8 +66,9 @@ Not used: `stages` (empty for the firms checked), `deal_size` (`{min: 0, max: 0}
 | `round_label` | `round_label` | **Entry maturity**. Dealroom's own stage label; null when no stage definition is met |
 | `standardized_round` | `standardized_round` | Reported alongside, never used to fill a missing `round_label` |
 | `round_type` | `round_type` | Self-reported name, stored for debugging only |
-| `amount`, `valuation` + envelope `currency` | `amount`, `valuation`, `currency` | Verbose output only. `0` and `null` are kept distinct |
-| `is_vc_round`, `is_exit` | `is_vc_round`, `is_exit` | Stored |
+| `amount`, `valuation` + envelope `currency` | `amount`, `valuation`, `currency` | Prior VC capital at entry (disclosed amounts only). `0` and `null` are kept distinct |
+| `is_vc_round` | `is_vc_round` | Entry position and prior VC capital (which company rounds count as VC rounds before the entry) |
+| `is_exit` | `is_exit` | Stored only |
 | `investors` (`null` vs `[]`) | `investors_disclosed` | `null` is a tier redaction, not an empty round |
 | `investors[].investor` (`EntityRef`) | `entities` | Participant identity and type (`organization` / `person`) |
 | `investors[].is_lead` (`true` / `false` / `null`) | `round_participants.is_lead` (1 / 0 / NULL) | **Leadership** and **syndicates** |

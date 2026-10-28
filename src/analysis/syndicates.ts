@@ -17,6 +17,8 @@ export interface Partner {
 }
 
 export interface Syndicates {
+  role: "descriptive";
+  note: string;
   lead_partners: {
     basis: "initial_rounds_led_by_another_investor";
     rounds: number;
@@ -88,6 +90,8 @@ export function syndicates(history: InvestmentHistory): Syndicates {
   const rankedCo = rank(coInvestors, disclosed.length);
 
   return {
+    role: "descriptive",
+    note: "Context for investment leadership, not a separate measure: who led the first rounds this investor joined without leading, and who it co-invests with.",
     lead_partners: {
       basis: "initial_rounds_led_by_another_investor",
       rounds: n,

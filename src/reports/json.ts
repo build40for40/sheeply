@@ -1,4 +1,5 @@
 import type { Analysis } from "../analysis/analyse.ts";
+import type { BlackSheepScore } from "../analysis/black-sheep.ts";
 import { THRESHOLDS } from "../analysis/interpretation.ts";
 import type { CompanyInvestment } from "../analysis/investments.ts";
 import { leadStatus } from "../analysis/leadership.ts";
@@ -30,6 +31,7 @@ function roundView(round: Round, investorId: string) {
 }
 
 function contribution(company: CompanyInvestment, investorId: string) {
+  const entry = company.entry;
   return {
     company_id: company.companyId,
     company_name: company.companyName,
@@ -37,12 +39,25 @@ function contribution(company: CompanyInvestment, investorId: string) {
     rounds_count_reported: company.roundsCountReported,
     company_rounds_observed: company.companyRoundsObserved,
     initial_round: company.initial ? roundView(company.initial, investorId) : null,
+    entry_context: entry && {
+      company_first_known_vc_round_id: entry.companyFirstVcRoundId,
+      prior_vc_rounds: entry.priorVcRounds,
+      uncertain_vc_rounds: entry.uncertainVcRounds,
+      prior_vc_capital: entry.priorVcCapital,
+      prior_vc_rounds_without_amount: entry.priorVcRoundsWithoutAmount,
+      company_age_at_entry_years: entry.companyAgeAtEntryYears,
+    },
     follow_on_rounds: company.followOns.map((round) => roundView(round, investorId)),
     flags: company.flags,
   };
 }
 
-export function buildReport(dataset: Dataset, analysis: Analysis, options: { verbose: boolean }) {
+export function buildReport(
+  dataset: Dataset,
+  analysis: Analysis,
+  blackSheep: BlackSheepScore,
+  options: { verbose: boolean },
+) {
   const { investor, provenance } = dataset;
   const report = {
     report_schema_version: REPORT_SCHEMA_VERSION,
@@ -74,15 +89,16 @@ export function buildReport(dataset: Dataset, analysis: Analysis, options: { ver
     coverage: {
       portfolio_companies_returned: analysis.dataQuality.portfolio.rows_returned,
       portfolio_companies_reported: analysis.dataQuality.portfolio.reported_by_dealroom,
-      first_investments_identified: analysis.dataQuality.initial_investments.identified,
+      first_investments_identified: analysis.entryMaturity.first_investments,
       first_investments_with_known_stage: analysis.entryMaturity.known_stage,
-      first_investments_with_known_lead_status: analysis.leadership.initial_rounds.known,
+      first_investments_with_usable_lead_status: analysis.investmentLeadership.initial_investments.usable_lead_status,
       funding_rounds_analysed: dataset.rounds.length,
     },
+    black_sheep_score: blackSheep,
     entry_maturity: analysis.entryMaturity,
-    leadership: analysis.leadership,
-    syndicates: analysis.syndicates,
-    sectors: analysis.sectors,
+    investment_leadership: analysis.investmentLeadership,
+    sector_exposure: analysis.sectorExposure,
+    syndicate_relationships: analysis.syndicateRelationships,
     data_quality: analysis.dataQuality,
     interpretation: { thresholds: THRESHOLDS, statements: analysis.interpretation },
     ...(options.verbose

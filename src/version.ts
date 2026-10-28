@@ -7,7 +7,7 @@ export const TOOL_VERSION: string = JSON.parse(readFileSync(new URL("../package.
 export const EXTRACTION_VERSION = "1";
 
 /** Bump when any metric, threshold or interpretation rule changes. */
-export const ALGORITHM_VERSION = "0.1.0";
+export const ALGORITHM_VERSION = "0.3.0";
 
 /** Bump when the JSON report shape changes incompatibly. */
-export const REPORT_SCHEMA_VERSION = "1";
+export const REPORT_SCHEMA_VERSION = "2";

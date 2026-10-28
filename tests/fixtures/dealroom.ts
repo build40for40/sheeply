@@ -96,6 +96,13 @@ export const TRANSACTIONS = [
     investors: [participant(LEAD_ONE, true), participant(INVESTOR, false), participant(CO_INVESTOR, false)],
   }),
   round(13, C.acme, { date: "2021", label: "SERIES A", standardized: "Series A", investors: [participant(LEAD_TWO, true)] }),
+  round(20, C.bramble, {
+    date: "2018-01",
+    label: "PRE-SEED",
+    standardized: "Pre-Seed",
+    amount: 500_000,
+    investors: [participant(LEAD_TWO, true)],
+  }),
   round(21, C.bramble, {
     date: "2019-02",
     label: "MICRO-SEED",

@@ -2,6 +2,9 @@ import { mkdirSync, writeFileSync } from "node:fs";
 import { dirname, resolve } from "node:path";
 import { createInterface } from "node:readline/promises";
 import { analyse } from "../analysis/analyse.ts";
+import type { BlackSheepScore } from "../analysis/black-sheep.ts";
+import { blackSheepScore, sheepProfile } from "../analysis/black-sheep.ts";
+import { CALIBRATION } from "../analysis/black-sheep-calibration.ts";
 import { latestCompleteRun, loadDataset } from "../analysis/dataset.ts";
 import { loadDealroomConfig } from "../config.ts";
 import { DealroomClient } from "../dealroom/client.ts";
@@ -12,6 +15,7 @@ import { ingestInvestor } from "../ingest/fetch.ts";
 import type { Candidate, Chooser } from "../ingest/resolve.ts";
 import { resolveInvestor } from "../ingest/resolve.ts";
 import { buildReport, renderJson } from "../reports/json.ts";
+import { renderBlackSheep } from "../reports/sheep.ts";
 
 export interface AnalyseOptions {
   investor?: string;
@@ -38,7 +42,7 @@ export class UsageError extends Error {
   override name = "UsageError";
 }
 
-export const SUPPORTED_FORMATS = ["json"];
+export const SUPPORTED_FORMATS = ["sheep", "json"];
 
 export function openWorkingDatabase(path: string, log: (message: string) => void): Database {
   const db = openDatabase(path);
@@ -85,8 +89,12 @@ export async function runAnalyse(options: AnalyseOptions, io: CliIo): Promise<vo
     }
 
     const dataset = loadDataset(db, resolution.id);
-    const report = buildReport(dataset, analyse(dataset), { verbose: options.verbose });
-    const text = renderJson(report);
+    const analysis = analyse(dataset);
+    const blackSheep = blackSheepScore(sheepProfile(analysis.history, analysis.entryMaturity, dataset.investor.name), CALIBRATION);
+    const text =
+      options.format === "json"
+        ? renderJson(buildReport(dataset, analysis, blackSheep, { verbose: options.verbose }))
+        : renderBlackSheep(dataset.investor.name, scoredValue(dataset.investor.name, blackSheep));
     if (options.output) {
       const path = resolve(options.output);
       mkdirSync(dirname(path), { recursive: true });
@@ -98,6 +106,13 @@ export async function runAnalyse(options: AnalyseOptions, io: CliIo): Promise<vo
   } finally {
     db.close();
   }
+}
+
+function scoredValue(name: string, score: BlackSheepScore): number {
+  if (score.value === null) {
+    throw new UsageError(`No black sheep score for ${name}. ${score.reasons.join(" ")} Use --format json for the full report.`);
+  }
+  return score.value;
 }
 
 function promptChoice(log: (message: string) => void): Chooser {

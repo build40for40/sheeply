@@ -2,7 +2,7 @@ import { Command, Option } from "commander";
 import { DEFAULT_DB_PATH } from "../config.ts";
 import { TOOL_VERSION } from "../version.ts";
 import type { CliIo } from "./analyse-command.ts";
-import { runAnalyse } from "./analyse-command.ts";
+import { SUPPORTED_FORMATS, runAnalyse } from "./analyse-command.ts";
 import { runRebuild, runStatus } from "./db-command.ts";
 
 export function buildProgram(io: CliIo): Command {
@@ -19,9 +19,9 @@ export function buildProgram(io: CliIo): Command {
     .addOption(dbOption())
     .option("--refresh", "fetch from Dealroom again even if data is stored", false)
     .option("--offline", "use only stored data, never call Dealroom", false)
-    .addOption(new Option("--format <format>", "output format").choices(["json"]).default("json"))
+    .addOption(new Option("--format <format>", "output format").choices(SUPPORTED_FORMATS).default("sheep"))
     .option("--output <file>", "write the report to a file instead of stdout")
-    .option("--verbose", "include the per-company investments behind every metric", false)
+    .option("--verbose", "include the per-company investments behind every metric (json format)", false)
     .option("--no-interactive", "fail instead of prompting when a name is ambiguous")
     .configureOutput({ writeOut: io.stdout, writeErr: io.stderr })
     .exitOverride()

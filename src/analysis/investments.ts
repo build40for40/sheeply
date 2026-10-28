@@ -1,7 +1,8 @@
 import { compareStrings } from "../util.ts";
-import { dateSpan, overlaps } from "./partial-date.ts";
+import type { DateSpan } from "./partial-date.ts";
+import { dateSpan, definitelyBefore, overlaps } from "./partial-date.ts";
 import { stageRank } from "./stages.ts";
-import type { Dataset, Participant, Round } from "./types.ts";
+import type { Company, Dataset, Participant, Round } from "./types.ts";
 
 export type CompanyStatus =
   /** The investor appears on at least one of the company's rounds. */
@@ -10,6 +11,8 @@ export type CompanyStatus =
   | "no_round_attribution"
   /** The portfolio says the investor joined rounds, but none of the company's returned rounds lists it. */
   | "rounds_not_matched"
+  /** As above, but some of the company's rounds have no investor list, so the participation may be hidden there. */
+  | "participation_undisclosed"
   /** The portfolio row is a university, gov/NGO or investor, not a company. */
   | "not_a_company";
 
@@ -19,7 +22,27 @@ export type InvestmentFlag =
   /** At least one other participation has no date, so it may precede the chosen initial round. */
   | "undated_participation"
   /** The chosen initial round itself has no date. */
-  | "initial_undated";
+  | "initial_undated"
+  /** A company round that may be earlier has no investor list, so the investor may have entered there. */
+  | "earlier_round_investors_undisclosed";
+
+/**
+ * Where the investor's first observed round sits in the company's own funding history. Uses only
+ * rounds that are before it, so nothing here depends on what happened after the entry.
+ */
+export interface EntryContext {
+  /** The company's earliest known VC round, which may or may not be the investor's first round. */
+  companyFirstVcRoundId: number | null;
+  /** VC rounds (other than the entry round) whose dates put them definitely before the entry. */
+  priorVcRounds: number;
+  /** VC rounds that cannot be ordered against the entry because of partial or missing dates. */
+  uncertainVcRounds: number;
+  /** Sum of disclosed amounts of the prior VC rounds. */
+  priorVcCapital: number;
+  priorVcRoundsWithoutAmount: number;
+  /** Entry year minus launch year; null when either is unknown. */
+  companyAgeAtEntryYears: number | null;
+}
 
 export interface CompanyInvestment {
   companyId: string;
@@ -31,6 +54,7 @@ export interface CompanyInvestment {
   initial: Round | null;
   followOns: Round[];
   flags: InvestmentFlag[];
+  entry: EntryContext | null;
 }
 
 export interface InvestmentHistory {
@@ -69,16 +93,18 @@ export function buildInvestmentHistory(dataset: Dataset): InvestmentHistory {
   }
 
   const companies = dataset.portfolio.map((entry): CompanyInvestment => {
-    const companyRounds = roundsByCompany.get(entry.companyId) ?? [];
-    const participations = companyRounds.filter((round) => participantOf(round, investorId)).sort(compareRounds);
+    const companyRounds = [...(roundsByCompany.get(entry.companyId) ?? [])].sort(compareRounds);
+    const participations = companyRounds.filter((round) => participantOf(round, investorId));
     const [initial = null, ...followOns] = participations;
 
     let status: CompanyStatus;
     if (entry.companySubtype !== null && entry.companySubtype !== "company") status = "not_a_company";
     else if (initial) status = "initial_identified";
     else if (entry.roundsCount === 0) status = "no_round_attribution";
+    else if (companyRounds.some((round) => !round.investorsDisclosed)) status = "participation_undisclosed";
     else status = "rounds_not_matched";
 
+    const identified = status === "initial_identified" && initial !== null;
     return {
       companyId: entry.companyId,
       companyName: entry.companyName,
@@ -86,9 +112,10 @@ export function buildInvestmentHistory(dataset: Dataset): InvestmentHistory {
       roundsCountReported: entry.roundsCount,
       companyRoundsObserved: companyRounds.length,
       participations,
-      initial: status === "initial_identified" ? initial : null,
-      followOns: status === "initial_identified" ? followOns : [],
-      flags: status === "initial_identified" && initial ? flagsFor(initial, followOns) : [],
+      initial: identified ? initial : null,
+      followOns: identified ? followOns : [],
+      flags: identified ? flagsFor(initial, followOns, companyRounds) : [],
+      entry: identified ? entryContext(initial, companyRounds, dataset.companies[entry.companyId]) : null,
     };
   });
 
@@ -100,7 +127,13 @@ export function buildInvestmentHistory(dataset: Dataset): InvestmentHistory {
   };
 }
 
-function flagsFor(initial: Round, followOns: Round[]): InvestmentFlag[] {
+/** True unless `round` is definitely after the entry, i.e. it could have come first. */
+const mayPrecede = (round: Round, entrySpan: DateSpan | null): boolean => {
+  const span = dateSpan(round.announcedDate);
+  return entrySpan === null || span === null || !definitelyBefore(entrySpan, span);
+};
+
+function flagsFor(initial: Round, followOns: Round[], companyRounds: Round[]): InvestmentFlag[] {
   const flags: InvestmentFlag[] = [];
   const initialSpan = dateSpan(initial.announcedDate);
   if (initialSpan === null) flags.push("initial_undated");
@@ -108,7 +141,31 @@ function flagsFor(initial: Round, followOns: Round[]): InvestmentFlag[] {
   const next = followOns[0];
   const nextSpan = next ? dateSpan(next.announcedDate) : null;
   if (initialSpan && nextSpan && overlaps(initialSpan, nextSpan)) flags.push("initial_ordering_ambiguous");
+  if (companyRounds.some((round) => !round.investorsDisclosed && round.id !== initial.id && mayPrecede(round, initialSpan))) {
+    flags.push("earlier_round_investors_undisclosed");
+  }
   return flags;
+}
+
+function entryContext(initial: Round, companyRounds: Round[], company: Company | undefined): EntryContext {
+  const entrySpan = dateSpan(initial.announcedDate);
+  const vcRounds = companyRounds.filter((round) => round.isVcRound === true);
+  const others = vcRounds.filter((round) => round.id !== initial.id);
+  const prior = others.filter((round) => {
+    const span = dateSpan(round.announcedDate);
+    return entrySpan !== null && span !== null && definitelyBefore(span, entrySpan);
+  });
+
+  const entryYear = initial.announcedDate === null ? null : Number(initial.announcedDate.slice(0, 4));
+  const launchYear = company?.launchDate ? Number(company.launchDate.slice(0, 4)) : null;
+  return {
+    companyFirstVcRoundId: vcRounds[0]?.id ?? null,
+    priorVcRounds: prior.length,
+    uncertainVcRounds: others.filter((round) => !prior.includes(round) && mayPrecede(round, entrySpan)).length,
+    priorVcCapital: prior.reduce((sum, round) => sum + (round.amount ?? 0), 0),
+    priorVcRoundsWithoutAmount: prior.filter((round) => round.amount === null).length,
+    companyAgeAtEntryYears: entryYear === null || launchYear === null ? null : entryYear - launchYear,
+  };
 }
 
 export const identified = (history: InvestmentHistory): CompanyInvestment[] =>
