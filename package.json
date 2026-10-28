@@ -1,0 +1,40 @@
+{
+  "name": "sheeply",
+  "version": "0.1.0",
+  "description": "Local-first CLI that profiles how a venture firm invests: entry stage, lead behaviour and syndicate concentration, from Dealroom data",
+  "type": "module",
+  "bin": {
+    "sheeply": "dist/cli/index.js",
+    "fundprint": "dist/cli/index.js"
+  },
+  "files": [
+    "dist",
+    "!dist/**/*.test.*",
+    "docs",
+    ".env.example"
+  ],
+  "engines": {
+    "node": ">=22.13"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/build40for40/sheeply.git"
+  },
+  "scripts": {
+    "build": "rm -rf dist && tsc -p tsconfig.build.json && chmod +x dist/cli/index.js",
+    "dev": "node src/cli/index.ts",
+    "typecheck": "tsc --noEmit",
+    "test": "vitest run",
+    "test:smoke": "vitest run --config vitest.smoke.config.ts",
+    "prepack": "npm run build"
+  },
+  "dependencies": {
+    "commander": "^15.0.0",
+    "zod": "^4.6.7"
+  },
+  "devDependencies": {
+    "@types/node": "^22.20.5",
+    "typescript": "^7.0.2",
+    "vitest": "^5.0.5"
+  }
+}
