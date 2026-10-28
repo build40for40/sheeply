@@ -1,139 +1,156 @@
 # Sheeply
 
-Does a venture firm back its own conviction, take early risk, or mostly tag along on rounds other people lead? Sheeply pulls a firm's portfolio and funding history from the [Dealroom API](https://developers.dealroom.co/), caches it in a local SQLite file and prints a transparent JSON profile:
+Is your VC a black sheep or one of the flock?
 
-- **Entry maturity** (metric): the stage of each first investment (pre-seed, seed, Series A, Series B+, unknown), with company age, prior capital and entry position as unscored context.
-- **Investment leadership** (metric): how often the firm is recorded as lead on its first investments, with the denominator and how complete Dealroom's lead data is.
-- **Sector exposure** (descriptive): multi-label industry mix of those companies.
-- **Syndicate relationships** (descriptive): who led the rounds the firm joined, and who it keeps co-investing with.
-- **Data quality and a rule-based interpretation**, with every threshold and exclusion spelled out.
-- **Black sheep score** (0-100): how often the firm leads or goes in first rather than following, ranked against a versioned set of early-stage peers, with a range and the counts behind it.
+Every investor says they back founders early and lead with conviction. Sheeply checks. Give it a firm's name and it pulls the firm's portfolio and every funding round from [Dealroom](https://dealroom.co), works out how often the firm leads or goes in first rather than following someone else, and draws you a sheep.
 
-The metrics stay separate so correlated signals are not counted twice; the black sheep score is the one composite and says which peers it was ranked against. No LLM, no server. A research tool, built as dry run #1 for [40 for 40](https://build40for40.com).
+```text
+$ sheeply "Example Ventures"
+Investor: Example Ventures
+          .-~~-.-~~-.-~~-.
+  ,--.  .( @ @ @@ @ @ @@ ).
+ ( o  \(@@ @ @@ @ @ @@ @ @ )
+  \   /(@ @ @ @@ @ @ @@ @ @)
+   `-'  `(@ @@ @ @ @@ @ @)'
+          `-~~-'-~~-'-~~-'
+            ||        ||
+            ^^        ^^
+42% black sheep: Grey area. Shear indecision.
+```
 
-## Quick start
+The fuller the fleece, the more the firm follows the flock. An empty outline is a true black sheep.
 
-Needs Node.js 22.13 or later (SQLite comes built in, nothing native to compile) and a Dealroom API key.
+Built as dry run #1 for [40 for 40](https://build40for40.com). It runs on your machine: no server, no accounts, no AI guessing.
+
+## What the score means
+
+The black sheep score runs from 0 to 100 and asks two questions about each firm's first investment in a company since 2020:
+
+1. **Did it lead?** Was it the round's lead investor, or the only investor, rather than joining a round someone else led?
+2. **Did it go in first?** Was this the company's first VC round, rather than joining a company that had already raised behind someone else's lead?
+
+Each answer becomes a rank against a peer set of 31 UK and European early-stage investors, and the score is the average of the two ranks. So 50 means "about as independent as a typical early-stage peer", and 100 means "more independent than every one of them".
+
+| Score | Label |
+| --- | --- |
+| 0 to 15 | Pure white sheep. Baaa-sically the whole flock. |
+| 16 to 35 | Follows the flock |
+| 36 to 55 | Grey area. Shear indecision. |
+| 56 to 75 | Ewe-nique taste |
+| 76 to 90 | Ram-pant contrarian |
+| 91 to 100 | True Blaaaaack Sheep |
+
+**Take it with a pinch of salt.** It only sees announced rounds in Dealroom. It can't see who committed first, how fast a firm moved or whether it asked "who's leading?" before saying yes. Dealroom also leaves gaps: some rounds name no lead at all, and some list only one investor because nobody recorded the others. The JSON report gives a range for every score (firms whose ranges overlap shouldn't be called different), plus the counts behind it. A firm with too little recent data, or one that mostly invests after seed, gets an explanation instead of a score.
+
+## Getting started
+
+You need Node.js 22.13 or later and a Dealroom API key.
 
 ```bash
 git clone https://github.com/build40for40/sheeply.git
 cd sheeply
 npm install
-cp .env.example .env   # then fill in DEALROOM_CLIENT_ID and DEALROOM_CLIENT_SECRET
 npm run build
+cp .env.example .env    # then add your Dealroom key, see below
 node dist/cli/index.js "Seedcamp"
 ```
 
-Or straight from a packed tarball, without cloning:
+Once it's published to npm, this becomes `npx sheeply "Seedcamp"`.
+
+### Your Dealroom key
+
+A Dealroom API key is a client id and a secret, created under API settings in Dealroom. Put both in `.env` in the folder you run Sheeply from:
 
 ```bash
-npm pack                                   # in this repo, makes sheeply-0.1.0.tgz
-npx --package ./sheeply-0.1.0.tgz sheeply "Seedcamp"
+DEALROOM_CLIENT_ID=your-client-id
+DEALROOM_CLIENT_SECRET=your-client-secret
 ```
 
-Once published, it will be `npx sheeply "Seedcamp"`.
+Keys issued during Dealroom's open beta also need `DEALROOM_API_BASE_URL=https://api.beta.dealroom.app`.
 
-## Dealroom credentials
+**It costs credits.** Dealroom charges about one credit per record. A firm with about 500 portfolio companies costs roughly 2,300 credits the first time. After that the data is cached, and rerunning is free.
 
-A Dealroom API key is a **client id and secret pair**, not a single token. Create one under API settings in Dealroom, then either put them in `.env` in the directory you run from, or export them:
+## Using it
 
 ```bash
-export DEALROOM_CLIENT_ID=…
-export DEALROOM_CLIENT_SECRET=…
+sheeply "Seedcamp"                  # draw the sheep (fetches the firm the first time)
+sheeply "Seedcamp" --format json    # the full report, with every number behind the score
+sheeply "Seedcamp" --offline        # use only what's cached, never call Dealroom
+sheeply "Seedcamp" --refresh        # fetch fresh data from Dealroom
 ```
 
-Sheeply swaps them for a 24 hour Bearer token and sends it with `X-Client-Id` and a pinned `API-Version` on every request.
+**If a name matches more than one firm,** Sheeply asks which one you mean. In a script, or with `--no-interactive`, it stops and lists the candidates with their ids instead. Pass one back with `--investor-id <id>`.
 
-| Variable | Default | |
-| --- | --- | --- |
-| `DEALROOM_CLIENT_ID`, `DEALROOM_CLIENT_SECRET` | | Required unless `--offline` |
-| `DEALROOM_API_BASE_URL` | `https://api.dealroom.app` | Keys issued during the open beta need `https://api.beta.dealroom.app` |
-| `DEALROOM_AUDIENCE` | the base URL | OAuth audience |
-| `DEALROOM_TOKEN_URL` | `https://accounts.dealroom.co/oauth/token` | |
-| `DEALROOM_API_VERSION` | `2026-10-22` | Date-pinned API version |
-| `DEALROOM_REQUESTS_PER_SECOND` | `4` | Dealroom allows 5 per key |
-| `DEALROOM_TIMEOUT_MS` | `60000` | Per request |
-| `SHEEPLY_DB` | `./sheeply.sqlite` | Cache location |
+All the options:
 
-**Credits:** Dealroom charges about one credit per record returned. Seedcamp (523 companies, 1,777 rounds) costs about 2,300 credits on first fetch; later runs reuse the cache for free.
+| Option | What it does |
+| --- | --- |
+| `--format sheep` or `json` | The sheep (default), or the full JSON report |
+| `--verbose` | Adds every company and round behind the numbers to the JSON |
+| `--output <file>` | Writes the output to a file instead of the screen |
+| `--investor-id <id>` | Skips name matching and uses an exact Dealroom id |
+| `--offline` | Uses only cached data, never calls Dealroom |
+| `--refresh` | Fetches the firm again even if it's cached |
+| `--db <file>` | Uses a different cache file (default `./sheeply.sqlite`) |
+| `--no-interactive` | Fails with the candidates instead of asking which firm you meant |
 
-## Usage
+Two housekeeping commands: `sheeply db status` lists what's cached, and `sheeply db rebuild` rebuilds the cache's tables from the stored Dealroom responses without calling the API.
 
-```bash
-sheeply "Seedcamp"                                  # resolve, fetch if not cached, draw the black sheep
-sheeply "Seedcamp" --format json                    # the full report as JSON
-sheeply "Index Ventures" --format json --verbose    # add the per-company rounds behind every metric
-sheeply "LocalGlobe" --format json --output ./results/lg.json   # write to a file
-sheeply --investor-id a9d89ae3-22df-49b8-9fb6-57ad8701973d   # exact id, for reproducibility
-sheeply "Seedcamp" --refresh                        # fetch again even though it is cached
-sheeply "Seedcamp" --offline                        # never call Dealroom
-sheeply "Seedcamp" --db ./research.sqlite           # use another cache file
-sheeply db status                                   # what is cached
-sheeply db rebuild                                  # re-derive every table from stored responses
-```
+Messages go to stderr and the result to stdout, so piping works: `sheeply "Seedcamp" --format json | jq .black_sheep_score`. Exit code `2` means a usage problem, an ambiguous name or not enough data; `3` means Dealroom returned an error.
 
-Progress goes to stderr and the report to stdout, so `sheeply "Seedcamp" --format json | jq .black_sheep_score` works.
+## The full report
 
-**Name resolution.** Sheeply only picks a name automatically when exactly one Dealroom investor matches it exactly (ignoring case, accents and punctuation). Anything else asks you to choose in a terminal, or fails with the candidate list and their `--investor-id` values when there is no terminal or you pass `--no-interactive`. Exit codes: `2` for usage or ambiguity, `3` for Dealroom API errors.
+`--format json` gives you everything the score is built from, and more:
 
-**Output format.** By default sheeply draws an ASCII sheep whose fleece thins as the investor's 0-100 black sheep score rises: a full white fleece follows the flock, an empty outline is the true black sheep. The score ranks the investor against peer figures built into the package, so nothing else is fetched. When the investor has too little data to score, it explains why and exits with code `2`. `--format json` prints the full report, whose shape is versioned by `report_schema_version`.
+- **Black sheep score:** the score, its range, both ranks and the raw counts behind them.
+- **Entry maturity:** the stage of each first investment (pre-seed, seed, Series A, Series B+ or unknown), plus company age and how much the company had raised before.
+- **Investment leadership:** how often the firm is recorded as lead, and how complete Dealroom's lead data is for that firm.
+- **Sector exposure:** which industries the firm's companies are in.
+- **Syndicate relationships:** who led the rounds the firm joined, and who it keeps investing alongside.
+- **Data quality:** what was missing, what was left out and why.
+- **Interpretation:** plain-English statements, each with the rule and threshold behind it.
 
-## The report
+Every percentage comes with its count and denominator. The same cached data always gives exactly the same report, so results can be checked and compared.
 
-```jsonc
-// Shape only; values are illustrative.
-{
-  "tool":   { "algorithm_version": "0.3.0", "extraction_version": "1", … },
-  "source": { "api_version": "2026-10-22", "retrieval_finished_at": "…", "credits_used": 1234, "dataset_fingerprint": "sha256:…" },
-  "investor": { "name": "Example Ventures", "analysis_level": "firm", … },
-  "coverage": { "portfolio_companies_returned": 300, "first_investments_identified": 270, … },
-  "black_sheep_score":       { "role": "score", "value": 42, "range": { "low": 30, "high": 55, … }, "components": { "leads": { … }, "independent_entry": { … } }, "calibration": { "peer_set_version": "…", … } },
-  "entry_maturity":          { "role": "metric", "distribution": { "seed": { "count": 120, "share": 0.44, "share_of_known_stage": 0.6 }, "unknown": { … }, … }, "explanatory_attributes": { … } },
-  "investment_leadership":   { "role": "metric", "initial_investments": { "lead_rate": { "numerator": 40, "denominator": 100, "value": 0.4 }, "lead_status_completeness": { … }, … } },
-  "sector_exposure":         { "role": "descriptive", "labelled": 260, "distribution": [ … ], "breadth": { … } },
-  "syndicate_relationships": { "role": "descriptive", "lead_partners": { … }, "co_investors": { … } },
-  "data_quality":   { "coverage": { … }, "lead_flags": { … }, "exclusions": [ { "output": "investment_leadership", "reason": "…", "count": 170 } ] },
-  "interpretation": { "thresholds": { … }, "statements": [ { "rule": "investment_leadership.led_minority", "statement": "…", "evidence": { … } } ] },
-  "contributions":  [ /* --verbose only */ ]
-}
-```
+How each number is calculated is in [docs/methodology.md](docs/methodology.md). Which Dealroom field feeds what is in [docs/dealroom-field-mapping.md](docs/dealroom-field-mapping.md), and known gaps in Dealroom's API are in [docs/api-limitations.md](docs/api-limitations.md).
 
-The same stored data and algorithm version always produce byte-identical output. How each number is calculated, and what is excluded, is in [docs/methodology.md](docs/methodology.md). Which Dealroom field feeds which column is in [docs/dealroom-field-mapping.md](docs/dealroom-field-mapping.md). Known API gaps and open questions are in [docs/api-limitations.md](docs/api-limitations.md).
+## Your data stays yours
+
+Everything Sheeply fetches lives in a SQLite file on your machine. Dealroom's data is licensed, so none of it is committed to this repo or shipped in the package. The only Dealroom-derived numbers in the package are the anonymised peer figures the score ranks against: two sorted lists of shares with no names attached.
 
 ## How it works
 
 ```text
-Dealroom API ──► raw_responses (verbatim JSON, per run) ──► derived tables ──► analysis ──► JSON report
-  search            ingestion_runs (status, version,          investors          pure functions,
-  investor          credits, timestamps)                      companies          no I/O
-  portfolio                                                   funding_rounds
-  transactions                                                round_participants …
+Dealroom API ──► raw responses, stored verbatim ──► tables ──► analysis ──► sheep or JSON
+                 (sheeply.sqlite)                   rebuilt     pure functions,
+                                                    any time    no network
 ```
 
-SQLite is a cache, not the source of truth. Dealroom plus the versioned extraction (`src/ingest/extract.ts`) and calculation (`src/analysis/`) are. Delete the file and run again to rebuild everything from the API; run `sheeply db rebuild` to re-derive every table from the stored responses without calling the API. Raw responses stay in your local file: they are Dealroom's licensed data and are never committed or packaged.
+The cached file is a convenience, not the source of truth: delete it and Sheeply fetches everything again. The peer figures come from an internal script, `npm run calibrate`, which fetches the peer list in `scripts/peers.ts` and regenerates `src/analysis/black-sheep-calibration.ts`. Users never need to run it.
 
 ```text
 src/
-  cli/         commander program, analyse and db commands
-  dealroom/    client (auth, retries, rate limit), zod schemas, cursor pagination, endpoints
-  db/          SQLite schema and migrations (node:sqlite)
-  ingest/      investor resolution, fetch into raw_responses, extraction into tables
-  analysis/    investment history, entry maturity, leadership, sector exposure, syndicates, data quality, interpretation
-  reports/     JSON report
-tests/
-  fixtures/    a small fictional Dealroom world and an in-memory fake API
-  integration/ CLI end to end against the fake API
-  smoke/       optional live API check
+  cli/        the commands
+  dealroom/   API client: login, retries, rate limits, schema checks, paging
+  db/         the SQLite cache
+  ingest/     finding the firm, fetching it and turning responses into tables
+  analysis/   the metrics, the black sheep score and its peer figures
+  reports/    the JSON report and the sheep
+scripts/      peer list and calibration (internal)
+tests/        fictional Dealroom data, an in-memory fake API, CLI tests and an optional live check
 ```
 
 ## Development
 
 ```bash
-npm run dev -- "Seedcamp"   # run from source (Node 22.18+ strips TypeScript types natively)
-npm test                    # unit and integration tests, no API key needed
-npm run test:smoke          # live API check, skipped without credentials, costs about a dozen credits
+npm run dev -- "Seedcamp"   # run from source
+npm test                    # all tests, no Dealroom key needed
 npm run typecheck
-npm run build
+npm run test:smoke          # a quick live check, about a dozen credits, skipped without a key
 ```
 
-Unit tests sit next to the file they cover (`leadership.ts` → `leadership.test.ts`). Fixtures are fictional; never commit real Dealroom responses.
+Unit tests sit next to the file they cover (`leadership.ts` and `leadership.test.ts`). Test data is made up: never commit real Dealroom responses. All settings, including rate limits and timeouts, are read from environment variables in `src/config.ts`.
+
+## Licence
+
+MIT
